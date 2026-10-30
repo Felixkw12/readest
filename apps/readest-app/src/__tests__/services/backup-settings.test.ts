@@ -117,6 +117,8 @@ function makeSettings(overrides: Partial<SystemSettings> = {}): SystemSettings {
       aiGatewayApiKey: 'ai-secret-key',
       openrouterApiKey: 'or-secret-key',
       openrouterBaseUrl: 'https://openrouter.ai/api/v1',
+      opperApiKey: 'opper-secret-key',
+      opperModel: 'gemini-3.8-flash',
     },
     globalReadSettings: {
       sideBarWidth: '20%',
@@ -254,8 +256,10 @@ describe('sanitizeSettingsForBackup - credentials', () => {
     expect(rec(out.notion)['accessToken']).toBeUndefined();
     expect(rec(out.aiSettings)['aiGatewayApiKey']).toBeUndefined();
     expect(rec(out.aiSettings)['openrouterApiKey']).toBeUndefined();
+    expect(rec(out.aiSettings)['opperApiKey']).toBeUndefined();
     // non-credential aiSettings fields (e.g. base URL) survive
     expect(rec(out.aiSettings)['openrouterBaseUrl']).toBe('https://openrouter.ai/api/v1');
+    expect(rec(out.aiSettings)['opperModel']).toBe('gemini-3.8-flash');
     expect(out.opdsCatalogs[0]!.username).toBeUndefined();
     expect(out.opdsCatalogs[0]!.password).toBeUndefined();
     expect(out.customTranslators![0]!.apiKey).toBeUndefined();
@@ -278,6 +282,7 @@ describe('sanitizeSettingsForBackup - credentials', () => {
     expect(out.notion.accessToken).toBe('notion-token');
     expect(rec(out.aiSettings)['aiGatewayApiKey']).toBe('ai-secret-key');
     expect(rec(out.aiSettings)['openrouterApiKey']).toBe('or-secret-key');
+    expect(rec(out.aiSettings)['opperApiKey']).toBe('opper-secret-key');
     expect(out.opdsCatalogs[0]!.username).toBe('opds-user');
     expect(out.opdsCatalogs[0]!.password).toBe('opds-pass');
     expect(out.customTranslators![0]!.apiKey).toBe('tr-secret');

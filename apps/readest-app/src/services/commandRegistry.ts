@@ -709,6 +709,18 @@ const aiPanelItems = [
     keywords: ['openrouter', 'model', 'claude', 'gpt', 'llama', 'deepseek'],
     section: 'OpenRouter',
   },
+  {
+    id: 'settings.ai.opperApiKey',
+    labelKey: _('Opper API Key'),
+    keywords: ['opper', 'api', 'key', 'token', 'secret'],
+    section: 'Opper',
+  },
+  {
+    id: 'settings.ai.opperModel',
+    labelKey: _('Opper Model'),
+    keywords: ['opper', 'model', 'claude', 'gpt', 'gemini', 'mistral'],
+    section: 'Opper',
+  },
 ];
 
 // custom panel items

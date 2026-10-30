@@ -10,6 +10,7 @@ import {
   fetchOpenRouterModels,
   type OpenRouterModelInfo,
 } from '@/services/ai/providers/OpenRouterProvider';
+import { fetchOpperModels, type OpperModelInfo } from '@/services/ai/providers/OpperProvider';
 import { DEFAULT_AI_SETTINGS, GATEWAY_MODELS, MODEL_PRICING } from '@/services/ai/constants';
 import type { AISettings, AIProviderName } from '@/services/ai/types';
 import { exportReedyMetricsBundle } from '@/services/reedy/instrumentation';
@@ -99,6 +100,16 @@ const AIPanel: React.FC = () => {
   const [openrouterModels, setOpenrouterModels] = useState<OpenRouterModelInfo[]>([]);
   const [openrouterFetchingModels, setOpenrouterFetchingModels] = useState(false);
   const [openrouterModelsError, setOpenrouterModelsError] = useState('');
+
+  // ---- Opper state ----
+  const [opperKey, setOpperKey] = useState(aiSettings.opperApiKey ?? '');
+  const [opperModel, setOpperModel] = useState(aiSettings.opperModel ?? '');
+  const [opperEmbeddingModel, setOpperEmbeddingModel] = useState(
+    aiSettings.opperEmbeddingModel ?? '',
+  );
+  const [opperModels, setOpperModels] = useState<OpperModelInfo[]>([]);
+  const [opperFetchingModels, setOpperFetchingModels] = useState(false);
+  const [opperModelsError, setOpperModelsError] = useState('');
 
   const savedCustomModel = aiSettings.aiGatewayCustomModel ?? '';
   const savedModel = aiSettings.aiGatewayModel ?? DEFAULT_AI_SETTINGS.aiGatewayModel ?? '';
@@ -203,6 +214,38 @@ const AIPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, enabled, openrouterKey, openrouterUrl]);
 
+  // ---- Opper: fetch /models list ----
+  const fetchOpperModelList = useCallback(async () => {
+    if (!enabled || !opperKey) {
+      setOpperModels([]);
+      return;
+    }
+    setOpperFetchingModels(true);
+    setOpperModelsError('');
+    try {
+      const models = await fetchOpperModels(opperKey);
+      models.sort((a, b) => a.id.localeCompare(b.id));
+      setOpperModels(models);
+      const chatModels = models.filter((m) => m.type !== 'embedding');
+      if (chatModels.length > 0 && !chatModels.some((m) => m.id === opperModel)) {
+        setOpperModel(chatModels[0]!.id);
+      }
+    } catch (e) {
+      setOpperModels([]);
+      setOpperModelsError((e as Error).message || _('Failed to fetch models'));
+    } finally {
+      setOpperFetchingModels(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, opperKey, opperModel]);
+
+  useEffect(() => {
+    if (provider === 'opper' && enabled && opperKey) {
+      fetchOpperModelList();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, enabled, opperKey]);
+
   useEffect(() => {
     isMounted.current = true;
   }, []);
@@ -287,6 +330,31 @@ const AIPanel: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openrouterEmbeddingModel]);
+
+  // ---- Opper save effects ----
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (opperKey !== (aiSettings.opperApiKey ?? '')) {
+      saveAiSetting('opperApiKey', opperKey);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opperKey]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (opperModel !== (aiSettings.opperModel ?? '')) {
+      saveAiSetting('opperModel', opperModel);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opperModel]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (opperEmbeddingModel !== (aiSettings.opperEmbeddingModel ?? '')) {
+      saveAiSetting('opperEmbeddingModel', opperEmbeddingModel);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opperEmbeddingModel]);
 
   // Get the effective model ID to use (either selected or custom)
   const getEffectiveModelId = useCallback(() => {
@@ -382,6 +450,9 @@ const AIPanel: React.FC = () => {
         openrouterBaseUrl: openrouterUrl,
         openrouterModel,
         openrouterEmbeddingModel,
+        opperApiKey: opperKey,
+        opperModel,
+        opperEmbeddingModel,
       };
       const aiProvider = getAIProvider(testSettings);
       const isHealthy = await aiProvider.healthCheck();
@@ -402,6 +473,8 @@ const AIPanel: React.FC = () => {
   };
 
   const disabledSection = !enabled ? 'opacity-50 pointer-events-none select-none' : '';
+  const opperChatModels = opperModels.filter((m) => m.type !== 'embedding');
+  const opperEmbeddingModels = opperModels.filter((m) => m.type === 'embedding');
 
   return (
     <div className='my-4 w-full space-y-6'>
@@ -441,6 +514,16 @@ const AIPanel: React.FC = () => {
             className='radio'
             checked={provider === 'openrouter'}
             onChange={() => setProvider('openrouter')}
+            disabled={!enabled}
+          />
+        </SettingsRow>
+        <SettingsRow label={_('Opper')} asLabel>
+          <input
+            type='radio'
+            name='ai-provider'
+            className='radio'
+            checked={provider === 'opper'}
+            onChange={() => setProvider('opper')}
             disabled={!enabled}
           />
         </SettingsRow>
@@ -738,6 +821,117 @@ const AIPanel: React.FC = () => {
                 'Optional. Leave blank if your endpoint does not support embeddings — chat will still work but RAG features will be unavailable.',
               )}
             </span>
+          </div>
+        </BoxedList>
+      )}
+
+      {provider === 'opper' && (
+        <BoxedList
+          title={_('Opper Configuration')}
+          description={_(
+            'Bring your own Opper API key. Opper is an EU-hosted AI gateway. The model list is fetched live from your account.',
+          )}
+          className={disabledSection}
+        >
+          {/* API key + refresh */}
+          <div className='flex flex-col gap-2 pe-4 py-3'>
+            <div className='flex w-full items-center justify-between'>
+              <SettingLabel>{_('API Key')}</SettingLabel>
+              <div className='flex items-center gap-2'>
+                <a
+                  href='https://platform.opper.ai'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className={clsx('link text-xs', !enabled && 'pointer-events-none')}
+                >
+                  {_('Get Key')}
+                </a>
+                <button
+                  className='hover:bg-base-200 inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-150'
+                  onClick={fetchOpperModelList}
+                  disabled={!enabled || opperFetchingModels || !opperKey}
+                  title={_('Refresh Models')}
+                  aria-label={_('Refresh Models')}
+                >
+                  {opperFetchingModels ? (
+                    <PiSpinner className='size-4 animate-spin' />
+                  ) : (
+                    <PiArrowsClockwise className='size-4' />
+                  )}
+                </button>
+              </div>
+            </div>
+            <input
+              type='password'
+              className='input input-sm w-full'
+              value={opperKey}
+              onChange={(e) => setOpperKey(e.target.value)}
+              disabled={!enabled}
+              autoComplete='off'
+            />
+          </div>
+
+          {/* Model picker, populated from Opper's /models */}
+          <div className='flex flex-col gap-2 pe-4 py-3'>
+            <SettingLabel>{_('LLM Model')}</SettingLabel>
+            {opperChatModels.length > 0 ? (
+              <select
+                className='select select-sm bg-base-100 text-base-content w-full'
+                value={opperModel}
+                onChange={(e) => setOpperModel(e.target.value)}
+                disabled={!enabled}
+              >
+                {opperChatModels.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name ? `${m.name} (${m.id})` : m.id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type='text'
+                className='input input-sm w-full'
+                value={opperModel}
+                onChange={(e) => setOpperModel(e.target.value)}
+                placeholder='gemini-3.8-flash'
+                disabled={!enabled}
+              />
+            )}
+            {opperModelsError && <span className='text-error text-xs'>{opperModelsError}</span>}
+            {!opperModelsError && !opperKey && (
+              <span className='text-base-content/60 text-xs'>
+                {_('Enter an API key, then refresh to load available models.')}
+              </span>
+            )}
+          </div>
+
+          {/* Embedding model, from the same listing filtered by type */}
+          <div className='flex flex-col gap-2 pe-4 py-3'>
+            <SettingLabel>{_('Embedding Model')}</SettingLabel>
+            {opperModels.length > 0 ? (
+              <select
+                className='select select-sm bg-base-100 text-base-content w-full'
+                value={opperEmbeddingModel}
+                onChange={(e) => setOpperEmbeddingModel(e.target.value)}
+                disabled={!enabled}
+              >
+                <option value=''>{_('None (disable RAG)')}</option>
+                {opperEmbeddingModels.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name ? `${m.name} (${m.id})` : m.id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type='text'
+                className='input input-sm w-full'
+                value={opperEmbeddingModel}
+                onChange={(e) => setOpperEmbeddingModel(e.target.value)}
+                placeholder='openai/text-embedding-3-small'
+                disabled={!enabled}
+              />
+            )}
           </div>
         </BoxedList>
       )}

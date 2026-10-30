@@ -36,6 +36,8 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
 import { OllamaProvider } from '@/services/ai/providers/OllamaProvider';
 import { AIGatewayProvider } from '@/services/ai/providers/AIGatewayProvider';
 import { OpenRouterProvider } from '@/services/ai/providers/OpenRouterProvider';
+import { OpperProvider, fetchOpperModels } from '@/services/ai/providers/OpperProvider';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { getAIProvider } from '@/services/ai/providers';
 import type { AISettings } from '@/services/ai/types';
 import { DEFAULT_AI_SETTINGS } from '@/services/ai/constants';
@@ -258,6 +260,88 @@ describe('OpenRouterProvider', () => {
   });
 });
 
+describe('OpperProvider', () => {
+  const opperSettings: AISettings = {
+    ...DEFAULT_AI_SETTINGS,
+    enabled: true,
+    provider: 'opper',
+    opperApiKey: 'op-test',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('should throw if no API key', () => {
+    const settings: AISettings = { ...DEFAULT_AI_SETTINGS, enabled: true, provider: 'opper' };
+    expect(() => new OpperProvider(settings)).toThrow('Opper API key required');
+  });
+
+  test('should create provider with API key', async () => {
+    const provider = new OpperProvider(opperSettings);
+
+    expect(provider.id).toBe('opper');
+    expect(provider.name).toBe('Opper');
+    expect(provider.requiresAuth).toBe(true);
+    expect(await provider.isAvailable()).toBe(true);
+  });
+
+  test('uses the Opper endpoint and default models', () => {
+    const provider = new OpperProvider(opperSettings);
+    expect(createOpenAICompatible).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'opper',
+        baseURL: 'https://api.opper.ai/v3/compat',
+        apiKey: 'op-test',
+      }),
+    );
+    const client = vi.mocked(createOpenAICompatible).mock.results[0]!.value;
+    provider.getModel();
+    provider.getEmbeddingModel();
+    expect(client.chatModel).toHaveBeenCalledWith('gemini-3.8-flash');
+    expect(client.textEmbeddingModel).toHaveBeenCalledWith('openai/text-embedding-3-small');
+  });
+
+  test('healthCheck succeeds when /models responds OK', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+    const provider = new OpperProvider(opperSettings);
+
+    expect(await provider.healthCheck()).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.opper.ai/v3/compat/models?view=simplified',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer op-test' }),
+      }),
+    );
+  });
+
+  test('healthCheck returns false when /models fails', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 401 });
+    const provider = new OpperProvider(opperSettings);
+
+    expect(await provider.healthCheck()).toBe(false);
+  });
+
+  test('fetchOpperModels reads display names and model types', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: 'gemini-3.8-flash', opper: { type: 'llm', display_name: 'Gemini 3.8 Flash' } },
+          { id: 'openai/text-embedding-3-small', opper: { type: 'embedding' } },
+        ],
+      }),
+    });
+
+    expect(await fetchOpperModels('op-test')).toEqual([
+      { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', type: 'llm' },
+      { id: 'openai/text-embedding-3-small', type: 'embedding' },
+    ]);
+  });
+});
+
 describe('getAIProvider', () => {
   test('should return OllamaProvider for ollama', () => {
     const settings: AISettings = { ...DEFAULT_AI_SETTINGS, enabled: true, provider: 'ollama' };
@@ -297,6 +381,23 @@ describe('getAIProvider', () => {
       provider: 'openrouter',
     };
     expect(() => getAIProvider(settings)).toThrow('API key required for OpenRouter');
+  });
+
+  test('should return OpperProvider for opper', () => {
+    const settings: AISettings = {
+      ...DEFAULT_AI_SETTINGS,
+      enabled: true,
+      provider: 'opper',
+      opperApiKey: 'op-test',
+    };
+    const provider = getAIProvider(settings);
+
+    expect(provider.id).toBe('opper');
+  });
+
+  test('getAIProvider throws when opper has no API key', () => {
+    const settings: AISettings = { ...DEFAULT_AI_SETTINGS, enabled: true, provider: 'opper' };
+    expect(() => getAIProvider(settings)).toThrow('API key required for Opper');
   });
 
   test('should throw for unknown provider', () => {

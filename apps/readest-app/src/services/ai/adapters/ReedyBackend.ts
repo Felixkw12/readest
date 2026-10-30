@@ -238,6 +238,8 @@ function embeddingModelIdFor(settings: AISettings): string {
       return settings.aiGatewayEmbeddingModel || 'openai/text-embedding-3-small';
     case 'openrouter':
       return settings.openrouterEmbeddingModel || 'openai/text-embedding-3-small';
+    case 'opper':
+      return settings.opperEmbeddingModel || 'openai/text-embedding-3-small';
   }
 }
 

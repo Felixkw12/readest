@@ -1,6 +1,6 @@
 import type { LanguageModel, EmbeddingModel } from 'ai';
 
-export type AIProviderName = 'ollama' | 'ai-gateway' | 'openrouter';
+export type AIProviderName = 'ollama' | 'ai-gateway' | 'openrouter' | 'opper';
 
 export interface AIProvider {
   id: AIProviderName;
@@ -33,6 +33,11 @@ export interface AISettings {
   openrouterBaseUrl?: string;
   openrouterModel?: string;
   openrouterEmbeddingModel?: string;
+
+  // Opper (https://opper.ai), fixed endpoint, user-supplied key.
+  opperApiKey?: string;
+  opperModel?: string;
+  opperEmbeddingModel?: string;
 
   spoilerProtection: boolean;
   maxContextChunks: number;
